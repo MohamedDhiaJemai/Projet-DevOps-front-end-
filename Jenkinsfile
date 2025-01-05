@@ -34,7 +34,9 @@ pipeline {
             steps {
                 script {
                     echo 'Building Docker image for front-end...'
-                    sh 'docker build -t ${env.IMAGE_NAME} ${env.FRONTEND_DIR}'  // Construire l'image Docker
+                    sh '''#!/bin/bash
+                    docker build -t ${IMAGE_NAME} ${FRONTEND_DIR}
+                    '''
                 }
             }
         }
