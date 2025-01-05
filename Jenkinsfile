@@ -1,7 +1,7 @@
 pipeline {
     agent any
     environment {
-        FRONTEND_DIR = 'react-crud-web-api-master'  // Répertoire du projet React
+        FRONTEND_DIR = '.'  // Répertoire du projet React
         IMAGE_NAME = 'my-react-frontend-image'  // Nom de l'image Docker du front-end
     }
     stages {
