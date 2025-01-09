@@ -1,101 +1,57 @@
 pipeline {
     agent any
-
     environment {
-        FRONTEND_DIR = 'frontend'  // Répertoire du projet frontend
-        BACKEND_DIR = 'backend'    // Répertoire du projet backend
-        SONARQUBE = 'SonarQube'    // Nom du serveur SonarQube configuré dans Jenkins
-        DOCKER_REGISTRY = 'docker-registry.example.com'  // Remplacer par votre registre Docker
-        DOCKER_IMAGE_NAME = 'frontend-backend-image'
+        FRONTEND_DIR = '.'  // Répertoire du projet React
+        IMAGE_NAME = 'my-react-frontend-image'  // Nom de l'image Docker du front-end
+        SONAR_SERVER = 'SonarQube'  // Nom du serveur SonarQube configuré dans Jenkins
+        SONAR_SCANNER_HOME = '/opt/sonar-scanner'  // Chemin vers SonarQube Scanner (ajustez si nécessaire)
+        PATH = "${SONAR_SCANNER_HOME}/bin:${env.PATH}"  // Ajoute sonar-scanner à la variable PATH
     }
-
     stages {
         stage('Checkout') {
             steps {
-                echo 'Cloning repository...'
-                checkout scm
+                checkout scm  // Récupérer le code source depuis GitHub
             }
         }
 
-        stage('Checkout Backend') {
+        stage('Install Dependencies') {
             steps {
-                dir(BACKEND_DIR) {
-                    echo 'Cloning backend repository...'
-                    checkout scm
-                }
-            }
-        }
-
-        stage('Install Backend Dependencies') {
-            steps {
-                dir(BACKEND_DIR) {
-                    echo 'Installing backend dependencies...'
-                    sh 'npm install'
-                }
-            }
-        }
-
-        stage('Run Backend Tests') {
-            steps {
-                dir(BACKEND_DIR) {
-                    echo 'Running tests for backend...'
-                    sh 'npm run test -- --coverage --passWithNoTests'  // Ajout de --passWithNoTests pour ne pas échouer sans tests
-                }
-            }
-        }
-
-        stage('SonarQube Analysis Backend') {
-            steps {
-                script {
-                    if (fileExists("${BACKEND_DIR}/sonar-project.properties")) {
-                        echo 'Running SonarQube analysis for backend...'
-                        withSonarQubeEnv(SONARQUBE) {
-                            sh 'mvn sonar:sonar'  // Si vous utilisez Maven pour le backend
-                        }
-                    } else {
-                        echo 'No SonarQube configuration found for backend.'
+                dir("${env.FRONTEND_DIR}") {
+                    script {
+                        echo 'Installing dependencies for front-end...'
+                        sh 'npm install'  // Installer les dépendances via npm
                     }
                 }
             }
         }
 
-        stage('Checkout Frontend') {
+        stage('Run Tests') {
             steps {
-                dir(FRONTEND_DIR) {
-                    echo 'Cloning frontend repository...'
-                    checkout scm
+                dir("${env.FRONTEND_DIR}") {
+                    script {
+                        echo 'Running tests for front-end...'
+                        sh 'npm run test -- --coverage'  // Exécuter les tests avec couverture
+                    }
                 }
             }
         }
 
-        stage('Install Frontend Dependencies') {
+        stage('SonarQube Analysis') {
             steps {
-                dir(FRONTEND_DIR) {
-                    echo 'Installing frontend dependencies...'
-                    sh 'npm install'
-                }
-            }
-        }
-
-        stage('Run Frontend Tests') {
-            steps {
-                dir(FRONTEND_DIR) {
-                    echo 'Running tests for frontend...'
-                    sh 'npm run test -- --coverage --passWithNoTests'  // Ajout de --passWithNoTests pour ne pas échouer sans tests
-                }
-            }
-        }
-
-        stage('SonarQube Analysis Frontend') {
-            steps {
-                script {
-                    if (fileExists("${FRONTEND_DIR}/sonar-project.properties")) {
-                        echo 'Running SonarQube analysis for frontend...'
-                        withSonarQubeEnv(SONARQUBE) {
-                            sh 'mvn sonar:sonar'  // Si vous utilisez Maven pour le frontend
+                withSonarQubeEnv("${env.SONAR_SERVER}") {
+                    dir("${env.FRONTEND_DIR}") {
+                        script {
+                            echo 'Running SonarQube analysis for front-end...'
+                            sh '''
+                            sonar-scanner \
+                            -Dsonar.projectKey=react-frontend-app \
+                            -Dsonar.projectName="React Frontend App" \
+                            -Dsonar.projectVersion=1.0 \
+                            -Dsonar.sources=. \
+                            -Dsonar.sourceEncoding=UTF-8 \
+                            -Dsonar.javascript.lcov.reportPaths=coverage/lcov-report/index-lcov-report.json
+                            '''
                         }
-                    } else {
-                        echo 'No SonarQube configuration found for frontend.'
                     }
                 }
             }
@@ -103,37 +59,22 @@ pipeline {
 
         stage('Build React App') {
             steps {
-                dir(FRONTEND_DIR) {
-                    echo 'Building React frontend app...'
-                    sh 'npm run build'
+                dir("${env.FRONTEND_DIR}") {
+                    script {
+                        echo 'Building the React application...'
+                        sh 'npm run build'  // Construire l'application React pour la production
+                    }
                 }
             }
         }
 
-        stage('Build Docker Image for Frontend') {
-            steps {
-                dir(FRONTEND_DIR) {
-                    echo 'Building Docker image for frontend...'
-                    sh 'docker build -t $DOCKER_REGISTRY/$DOCKER_IMAGE_NAME:frontend .'
-                }
-            }
-        }
-
-        stage('Build Docker Image for Backend') {
-            steps {
-                dir(BACKEND_DIR) {
-                    echo 'Building Docker image for backend...'
-                    sh 'docker build -t $DOCKER_REGISTRY/$DOCKER_IMAGE_NAME:backend .'
-                }
-            }
-        }
-
-        stage('Push Docker Images') {
+        stage('Build Docker Image for Front-end') {
             steps {
                 script {
-                    echo 'Pushing Docker images to registry...'
-                    sh 'docker push $DOCKER_REGISTRY/$DOCKER_IMAGE_NAME:frontend'
-                    sh 'docker push $DOCKER_REGISTRY/$DOCKER_IMAGE_NAME:backend'
+                    echo 'Building Docker image for front-end...'
+                    sh '''#!/bin/bash
+                    docker build -t ${IMAGE_NAME} ${FRONTEND_DIR}
+                    '''
                 }
             }
         }
@@ -141,15 +82,10 @@ pipeline {
 
     post {
         success {
-            echo 'Pipeline completed successfully!'
+            echo 'Front-end build, SonarQube analysis, and Docker image creation successful!'
         }
-
         failure {
-            echo 'Pipeline failed. Check the logs for details.'
-        }
-
-        always {
-            cleanWs()
+            echo '❌ Front-end build, SonarQube analysis, or Docker image creation failed!'
         }
     }
 }
